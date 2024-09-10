@@ -1,9 +1,21 @@
 import json
 import os
 from cryptography.fernet import Fernet
+import appdirs
 
-KEY_FILE = '.nuTTY_key'
-CONFIG_FILE = 'config.json'  # Config file for storing persistent data
+# Define the application name
+APP_NAME = "nuTTY"
+
+# Get the user's config directory
+CONFIG_DIR = appdirs.user_config_dir(APP_NAME)
+
+# Ensure the config directory exists
+os.makedirs(CONFIG_DIR, exist_ok=True)
+
+# Define file paths
+KEY_FILE = os.path.join(CONFIG_DIR, 'nuTTY_key')
+CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
+CONNECTIONS_FILE = os.path.join(CONFIG_DIR, 'connections.dat')
 
 def load_or_generate_key():
     """Load the secret key from a file or generate a new one if it doesn't exist."""
@@ -14,6 +26,8 @@ def load_or_generate_key():
         key = Fernet.generate_key()
         with open(KEY_FILE, 'wb') as f:
             f.write(key)
+        # Set appropriate permissions for the key file
+        os.chmod(KEY_FILE, 0o600)
         return key
     
 def load_config():
@@ -27,3 +41,7 @@ def save_config(config):
     """Save configuration to config.json."""
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
+
+# Helper function to get connections file path
+def get_connections_file_path():
+    return CONNECTIONS_FILE

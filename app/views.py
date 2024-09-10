@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt
 from tray import create_tray_manager
 from model import ConnectionListModel
 from dialogs import AddConnectionDialog, AboutDialog
-from config import save_config
+from config import save_config, get_connections_file_path
 import json
 import subprocess
 import os
@@ -165,15 +165,16 @@ class MainWindow(QMainWindow):
 
         # Encrypt and save the connection data
         encrypted_data = self.cipher_suite.encrypt(json.dumps(connections).encode())
-        with open('connections.dat', 'wb') as f:
+        with open(get_connections_file_path(), 'wb') as f:
             f.write(encrypted_data)
 
 
     def load_connections(self):
         try:
             # Read and decrypt the connection data from file
-            if os.path.exists('connections.dat'):
-                with open('connections.dat', 'rb') as f:
+            connections_file = get_connections_file_path()
+            if os.path.exists(connections_file):
+                with open(connections_file, 'rb') as f:
                     encrypted_data = f.read()
                 decrypted_data = self.cipher_suite.decrypt(encrypted_data).decode()
 
