@@ -1,5 +1,6 @@
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QComboBox, QCheckBox, QHBoxLayout, QPushButton, QMessageBox
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QComboBox, QCheckBox, QHBoxLayout, QPushButton, QMessageBox, QFileDialog
 from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt
 
 class AddConnectionDialog(QDialog):
     def __init__(self, parent=None):
@@ -30,6 +31,33 @@ class AddConnectionDialog(QDialog):
         layout.addWidget(QLabel("Protocol:"))
         layout.addWidget(self.protocol_select)
 
+        # Authentication method
+        self.auth_method = QCheckBox("Use Identity File (uncheck for password)")
+        self.auth_method.setChecked(True)
+        self.auth_method.stateChanged.connect(self.toggle_auth_method)
+        layout.addWidget(self.auth_method)
+
+        # Identity file input
+        self.identity_file_layout = QHBoxLayout()
+        self.identity_file_edit = QLineEdit()
+        self.identity_file_button = QPushButton("Browse")
+        self.identity_file_button.clicked.connect(self.browse_identity_file)
+        self.identity_file_layout.addWidget(self.identity_file_edit)
+        self.identity_file_layout.addWidget(self.identity_file_button)
+        layout.addWidget(QLabel("Identity File:"))
+        layout.addLayout(self.identity_file_layout)
+
+        # Password input
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_label = QLabel("Password:")
+        layout.addWidget(self.password_label)
+        layout.addWidget(self.password_edit)
+
+        # Initially hide password field
+        self.password_label.hide()
+        self.password_edit.hide()
+
         # X11 forwarding
         self.x11_checkbox = QCheckBox("Enable X11 Forwarding")
         layout.addWidget(self.x11_checkbox)
@@ -50,6 +78,23 @@ class AddConnectionDialog(QDialog):
 
         layout.addLayout(button_box)
 
+    def toggle_auth_method(self, state):
+        if state == Qt.Checked:
+            self.identity_file_edit.show()
+            self.identity_file_button.show()
+            self.password_label.hide()
+            self.password_edit.hide()
+        else:
+            self.identity_file_edit.hide()
+            self.identity_file_button.hide()
+            self.password_label.show()
+            self.password_edit.show()
+
+    def browse_identity_file(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Select Identity File", "", "All Files (*)")
+        if file_name:
+            self.identity_file_edit.setText(file_name)
+
     def get_connection_details(self):
         return {
             'name': self.name_edit.text(),
@@ -57,7 +102,10 @@ class AddConnectionDialog(QDialog):
             'domain': self.domain_edit.text(),
             'protocol': self.protocol_select.currentText(),
             'x11': self.x11_checkbox.isChecked(),
-            'description': self.description_edit.text()
+            'description': self.description_edit.text(),
+            'use_identity_file': self.auth_method.isChecked(),
+            'identity_file': self.identity_file_edit.text() if self.auth_method.isChecked() else None,
+            'password': self.password_edit.text() if not self.auth_method.isChecked() else None
         }
 
 

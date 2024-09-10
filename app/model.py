@@ -26,3 +26,8 @@ class ConnectionListModel(QAbstractListModel):
 
     def get_connection(self, row):
         return self.connections[row]
+
+    def update_connection(self, row, connection):
+        if 0 <= row < len(self.connections):
+            self.connections[row] = connection
+            self.dataChanged.emit(self.index(row), self.index(row))

@@ -155,7 +155,12 @@ class MainWindow(QMainWindow):
         # Iterate over the model to get all connections
         for row in range(self.connection_list_model.rowCount()):
             connection = self.connection_list_model.get_connection(row)
-            connections.append(connection)
+            # Create a copy of the connection to avoid modifying the original
+            connection_copy = connection.copy()
+            # Encrypt the password if it exists
+            if connection_copy.get('password'):
+                connection_copy['password'] = self.cipher_suite.encrypt(connection_copy['password'].encode()).decode()
+            connections.append(connection_copy)
 
         # Encrypt and save the connection data
         encrypted_data = self.cipher_suite.encrypt(json.dumps(connections).encode())
@@ -214,6 +219,18 @@ class MainWindow(QMainWindow):
                 username=connection['username'], 
                 domain=connection['domain']
             )
+
+            # Add authentication method to the SSH command
+            if connection.get('use_identity_file'):
+                if connection.get('identity_file'):
+                    ssh_command += f" -i {connection['identity_file']}"
+            elif connection.get('password'):
+                # We'll use sshpass for password authentication
+                ssh_command = f"sshpass -p {connection['password']} {ssh_command}"
+
+            # Add X11 forwarding if enabled
+            if connection.get('x11'):
+                ssh_command += " -X"
 
             # Get the proper terminal command string format for the selected terminal emulator
             terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
