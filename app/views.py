@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QListView, 
     QPushButton, QHBoxLayout, QDialog, QLabel, QComboBox, 
-    QMessageBox, QSystemTrayIcon,QMenu, QAction
+    QMessageBox
 )
 from PyQt5.QtGui import QIcon
+from tray import setup_tray_icon
 from tray import setup_tray_icon
 from model import ConnectionListModel
 from dialogs import AddConnectionDialog, AboutDialog
@@ -366,14 +367,4 @@ class MainWindow(QMainWindow):
             ssh_command = self.ssh_command_template.format(username=username, domain=domain)
 
             # Get the proper terminal command string format for the selected terminal emulator
-            terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
-
-            # Format the terminal command with the SSH command
-            terminal_command = terminal_format.format(ssh_command=ssh_command)
-
-            try:
-                # Execute the terminal command
-                subprocess.Popen(terminal_command, shell=True)
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")
+            terminal_format
