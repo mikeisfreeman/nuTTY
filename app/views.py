@@ -221,29 +221,19 @@ class MainWindow(QMainWindow):
             # Retrieve the selected connection details
             connection = self.connection_list_model.get_connection(selected_row)
 
-            # Format the SSH command using the selected connection's details
-            ssh_command = self.ssh_command_template.format(
-                username=connection['username'], 
-                domain=connection['domain']
-            )
-
-            # Add authentication method to the SSH command
-            if connection.get('use_identity_file'):
-                if connection.get('identity_file'):
-                    ssh_command += f" -i {connection['identity_file']}"
-            elif connection.get('password'):
-                # We'll use sshpass for password authentication
-                ssh_command = f"sshpass -p {connection['password']} {ssh_command}"
-
-            # Add X11 forwarding if enabled
-            if connection.get('x11'):
-                ssh_command += " -X"
+            if connection['protocol'] == 'SSH':
+                command = self.format_ssh_command(connection)
+            elif connection['protocol'] == 'Telnet':
+                command = self.format_telnet_command(connection)
+            else:
+                QMessageBox.critical(self, "Error", f"Unsupported protocol: {connection['protocol']}")
+                return
 
             # Get the proper terminal command string format for the selected terminal emulator
             terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
 
-            # Format the terminal command with the SSH command
-            terminal_command = terminal_format.format(ssh_command=ssh_command)
+            # Format the terminal command with the connection command
+            terminal_command = terminal_format.format(ssh_command=command)
 
             try:
                 # Execute the terminal command
@@ -251,6 +241,27 @@ class MainWindow(QMainWindow):
 
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")
+
+    def format_ssh_command(self, connection):
+        ssh_command = f"ssh {connection['username']}@{connection['domain']}"
+
+        if connection.get('use_identity_file') and connection.get('identity_file'):
+            ssh_command += f" -i {connection['identity_file']}"
+        elif connection.get('password'):
+            ssh_command = f"sshpass -p {connection['password']} {ssh_command}"
+
+        if connection.get('x11'):
+            ssh_command += " -X"
+
+        return ssh_command
+
+    def format_telnet_command(self, connection):
+        telnet_command = f"telnet {connection['domain']}"
+        
+        if connection.get('username') or connection.get('password'):
+            QMessageBox.warning(self, "Warning", "Telnet doesn't support secure authentication. Username and password will be sent in plain text.")
+        
+        return telnet_command
 
 
 

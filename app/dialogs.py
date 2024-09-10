@@ -112,7 +112,7 @@ class AddConnectionDialog(QDialog):
 class EditConnectionDialog(AddConnectionDialog):
     def __init__(self, parent=None, connection=None):
         super().__init__(parent)
-        self.setWindowTitle("Edit SSH Connection")
+        self.setWindowTitle("Edit Connection")
         
         if connection:
             self.name_edit.setText(connection.get('name', ''))
@@ -127,6 +127,22 @@ class EditConnectionDialog(AddConnectionDialog):
             
             # Manually call toggle_auth_method to ensure correct visibility of fields
             self.toggle_auth_method(self.auth_method.checkState())
+            
+            # Connect protocol selection to update UI
+            self.protocol_select.currentTextChanged.connect(self.update_ui_for_protocol)
+            self.update_ui_for_protocol(connection.get('protocol', 'SSH'))
+
+    def update_ui_for_protocol(self, protocol):
+        if protocol == 'Telnet':
+            self.auth_method.setEnabled(False)
+            self.x11_checkbox.setEnabled(False)
+            self.identity_file_edit.setEnabled(False)
+            self.identity_file_button.setEnabled(False)
+        else:
+            self.auth_method.setEnabled(True)
+            self.x11_checkbox.setEnabled(True)
+            self.identity_file_edit.setEnabled(self.auth_method.isChecked())
+            self.identity_file_button.setEnabled(self.auth_method.isChecked())
 
 class AboutDialog(QMessageBox):
     def __init__(self, parent=None):
