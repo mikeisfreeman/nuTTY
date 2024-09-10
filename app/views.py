@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QMessageBox
 )
 from PyQt5.QtGui import QIcon
-from tray import setup_tray_icon
+from tray import setup_tray_icon, update_tray_connections
 from tray import setup_tray_icon
 from model import ConnectionListModel
 from dialogs import AddConnectionDialog, AboutDialog
@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
         self.load_connections()
         
         # System tray setup
-        self.tray_icon = setup_tray_icon(self)
+        self.tray_icon = setup_tray_icon(self, self.connection_list_model)
 
         # Create the menu bar
         self.create_menu_bar()
@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
             self.save_connections()
 
             # Update the tray menu with the new connection
-            self.update_tray_connections(self.tray_icon.contextMenu())
+            self.update_tray_connections()
 
     def save_connections(self):
         connections = []
@@ -335,24 +335,9 @@ class MainWindow(QMainWindow):
         if reason == QSystemTrayIcon.DoubleClick:
             self.show()
     
-    def update_tray_connections(self, tray_menu):
-        """Dynamically populate the tray menu with a list of connections."""
-        # Clear any existing connections to avoid duplicates
-        tray_menu.clear()
-
-        # Add a section for the connections
-        connections_menu = QMenu("Connections", self)
-
-        # Loop through the model and add each connection as an action in the tray menu
-        for row in range(self.connection_list_model.rowCount()):
-            connection = self.connection_list_model.get_connection(row)
-
-            connection_action = QAction(f"{connection['name']} - {connection['domain']}", self)
-            connection_action.triggered.connect(lambda checked, row=row: self.connect_to_server_from_tray(row))
-            connections_menu.addAction(connection_action)
-
-        # Add the connections menu to the tray menu
-        tray_menu.addMenu(connections_menu)
+    def update_tray_connections(self):
+        """Update the tray connections."""
+        update_tray_connections(self.tray_icon.contextMenu(), self.connection_list_model, self)
 
 
     def connect_to_server_from_tray(self, row):
