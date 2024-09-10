@@ -367,4 +367,14 @@ class MainWindow(QMainWindow):
             ssh_command = self.ssh_command_template.format(username=username, domain=domain)
 
             # Get the proper terminal command string format for the selected terminal emulator
-            terminal_format
+            terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
+
+            # Format the terminal command with the SSH command
+            terminal_command = terminal_format.format(ssh_command=ssh_command)
+
+            try:
+                # Execute the terminal command
+                subprocess.Popen(terminal_command, shell=True)
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")
