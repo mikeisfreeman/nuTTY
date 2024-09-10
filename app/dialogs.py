@@ -109,6 +109,25 @@ class AddConnectionDialog(QDialog):
         }
 
 
+class EditConnectionDialog(AddConnectionDialog):
+    def __init__(self, parent=None, connection=None):
+        super().__init__(parent)
+        self.setWindowTitle("Edit SSH Connection")
+        
+        if connection:
+            self.name_edit.setText(connection.get('name', ''))
+            self.username_edit.setText(connection.get('username', ''))
+            self.domain_edit.setText(connection.get('domain', ''))
+            self.protocol_select.setCurrentText(connection.get('protocol', 'SSH'))
+            self.x11_checkbox.setChecked(connection.get('x11', False))
+            self.description_edit.setText(connection.get('description', ''))
+            self.auth_method.setChecked(connection.get('use_identity_file', True))
+            self.identity_file_edit.setText(connection.get('identity_file', ''))
+            self.password_edit.setText(connection.get('password', ''))
+            
+            # Manually call toggle_auth_method to ensure correct visibility of fields
+            self.toggle_auth_method(self.auth_method.checkState())
+
 class AboutDialog(QMessageBox):
     def __init__(self, parent=None):
         super().__init__(parent)

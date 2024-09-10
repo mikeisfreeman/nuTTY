@@ -7,7 +7,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
 from tray import create_tray_manager
 from model import ConnectionListModel
-from dialogs import AddConnectionDialog, AboutDialog
+from dialogs import AddConnectionDialog, EditConnectionDialog, AboutDialog
 from config import save_config, get_connections_file_path
 import json
 import subprocess
@@ -54,8 +54,13 @@ class MainWindow(QMainWindow):
         self.connect_btn.setEnabled(False)
         self.connect_btn.clicked.connect(self.connect_to_server)
 
+        self.edit_btn = QPushButton("Edit")
+        self.edit_btn.setEnabled(False)
+        self.edit_btn.clicked.connect(self.edit_connection)
+
         btn_layout.addWidget(self.add_btn)
         btn_layout.addWidget(self.remove_btn)
+        btn_layout.addWidget(self.edit_btn)
         btn_layout.addWidget(self.connect_btn)
         self.layout.addLayout(btn_layout)
 
@@ -257,6 +262,7 @@ class MainWindow(QMainWindow):
         # Enable/disable buttons based on whether a connection is selected
         self.remove_btn.setEnabled(has_selection)
         self.connect_btn.setEnabled(has_selection)
+        self.edit_btn.setEnabled(has_selection)
 
 
     def toggle_minimize_on_close(self, checked):
@@ -331,6 +337,30 @@ class MainWindow(QMainWindow):
         save_config(self.config)
 
         dialog.accept()
+
+    def edit_connection(self):
+        # Get the selected connection's index
+        selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
+        
+        if selected_indexes:
+            selected_row = selected_indexes[0].row()
+            # Retrieve the selected connection details
+            connection = self.connection_list_model.get_connection(selected_row)
+            
+            # Open the edit dialog
+            dialog = EditConnectionDialog(self, connection)
+            if dialog.exec_():
+                # Get updated connection details from the dialog
+                updated_connection = dialog.get_connection_details()
+                
+                # Update the connection in the model
+                self.connection_list_model.update_connection(selected_row, updated_connection)
+                
+                # Save the updated connections to the file
+                self.save_connections()
+                
+                # Update the tray menu
+                self.tray_manager.update_tray_connections()
 
     def connect_to_server_from_tray(self, row):
         """Connect to a server from the tray menu based on the row index."""
