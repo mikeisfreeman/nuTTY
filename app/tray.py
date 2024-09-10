@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QActionfrom PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction
+from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction
 from PyQt5.QtGui import QIcon
 
 def setup_tray_icon(parent):
