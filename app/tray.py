@@ -55,7 +55,7 @@ class TrayManager(QObject):
             connection = self.connection_model.get_connection(row)
 
             connection_action = QAction(f"{connection['name']} - {connection['domain']}", self.parent)
-            connection_action.triggered.connect(lambda checked, row=row: self.connect_to_server_from_tray(row))
+            connection_action.triggered.connect(lambda checked, row=row: self.connect_to_server_signal.emit(row))
             connections_menu.addAction(connection_action)
 
         # Add the connections menu to the tray menu
@@ -66,9 +66,13 @@ class TrayManager(QObject):
         if reason == QSystemTrayIcon.DoubleClick:
             self.show_window_signal.emit()
 
-    def connect_to_server_from_tray(self, row):
-        """Emit signal to connect to a server from the tray menu based on the row index."""
-        self.connect_to_server_signal.emit(row)
+    def show_message(self, title, message, icon=QSystemTrayIcon.Information, duration=2000):
+        """Show a tray icon message."""
+        self.tray_icon.showMessage(title, message, icon, duration)
+
+    def hide_tray_icon(self):
+        """Hide the tray icon."""
+        self.tray_icon.hide()
 
 def create_tray_manager(parent, connection_model):
     return TrayManager(parent, connection_model)
