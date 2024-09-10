@@ -1,11 +1,11 @@
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QListView, 
     QPushButton, QHBoxLayout, QDialog, QLabel, QComboBox, 
-    QMessageBox
+    QMessageBox, QSystemTrayIcon
 )
 from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt
 from tray import create_tray_manager
-from tray import setup_tray_icon
 from model import ConnectionListModel
 from dialogs import AddConnectionDialog, AboutDialog
 from config import save_config
@@ -21,16 +21,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.cipher_suite = cipher_suite
-        self.avaliable_terminal_emulators = {}
+        self.available_terminal_emulators = {}
         # Setup the main window
         self.setWindowTitle("nuTTY")
         self.setGeometry(300, 200, 600, 400)
         # Set the window icon
         self.setWindowIcon(QIcon('assets/icons/nuTTY_64x64_dark.png'))  # Replace with the path to your icon
 
-        
-
-         # Central widget layout
+        # Central widget layout
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
@@ -67,9 +65,8 @@ class MainWindow(QMainWindow):
         # Enable/disable buttons based on selection
         self.connection_list_view.selectionModel().selectionChanged.connect(self.update_button_states)
         
-
         # Load the terminal emulator from config.json
-        self.find_terminals() # TODO move the following line into this method.
+        self.find_terminals()
         self.terminal_executable = self.config.get("terminal_emulator", "xfce4-terminal")  # Default to xfce4-terminal TODO: default to system default terminal emulator
         self.ssh_command_template = 'ssh {username}@{domain}'  # SSH command template
         
@@ -261,11 +258,6 @@ class MainWindow(QMainWindow):
         self.connect_btn.setEnabled(has_selection)
 
 
-    def exit_app(self):
-        """Exit the application completely."""
-        self.tray_icon.hide()  # Hide the tray icon
-        QApplication.quit()  # Quit the application
-
     def toggle_minimize_on_close(self, checked):
         """Update the 'minimize on close' setting."""
         self.config['minimize_on_close'] = checked
@@ -276,14 +268,19 @@ class MainWindow(QMainWindow):
         if self.config.get("minimize_on_close", True):
             event.ignore()
             self.hide()
-            self.tray_icon.showMessage(
+            self.tray_manager.show_message(
                 "nuTTY SSH Manager",
                 "Application minimized to tray.",
-                QIcon("assets/icons/nuTTY_64x64_dark_notice.png"),
+                QSystemTrayIcon.Information,
                 2000
             )
         else:
             self.exit_app()
+
+    def exit_app(self):
+        """Exit the application completely."""
+        self.tray_manager.hide_tray_icon()
+        QApplication.quit()  # Quit the application
 
     def select_terminal_emulator(self):
         # Dialog to choose the preferred terminal emulator
@@ -354,6 +351,8 @@ class MainWindow(QMainWindow):
             try:
                 # Execute the terminal command
                 subprocess.Popen(terminal_command, shell=True)
-
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")
+
+    # Add other necessary methods here (e.g., find_terminals, load_connections, create_menu_bar, etc.)
+
