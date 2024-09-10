@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QMessageBox
 )
 from PyQt5.QtGui import QIcon
-from tray import setup_tray_icon, update_tray_connections
+from tray import create_tray_manager
 from tray import setup_tray_icon
 from model import ConnectionListModel
 from dialogs import AddConnectionDialog, AboutDialog
@@ -77,7 +77,10 @@ class MainWindow(QMainWindow):
         self.load_connections()
         
         # System tray setup
-        self.tray_icon = setup_tray_icon(self, self.connection_list_model)
+        self.tray_manager = create_tray_manager(self, self.connection_list_model)
+        self.tray_manager.show_window_signal.connect(self.show)
+        self.tray_manager.exit_app_signal.connect(self.exit_app)
+        self.tray_manager.connect_to_server_signal.connect(self.connect_to_server_from_tray)
 
         # Create the menu bar
         self.create_menu_bar()
@@ -149,7 +152,7 @@ class MainWindow(QMainWindow):
             self.save_connections()
 
             # Update the tray menu with the new connection
-            self.update_tray_connections()
+            self.tray_manager.update_tray_connections()
 
     def save_connections(self):
         connections = []
@@ -330,15 +333,6 @@ class MainWindow(QMainWindow):
         save_config(self.config)
 
         dialog.accept()
-    def tray_icon_activated(self, reason):
-        """Handle tray icon click."""
-        if reason == QSystemTrayIcon.DoubleClick:
-            self.show()
-    
-    def update_tray_connections(self):
-        """Update the tray connections."""
-        update_tray_connections(self.tray_icon.contextMenu(), self.connection_list_model, self)
-
 
     def connect_to_server_from_tray(self, row):
         """Connect to a server from the tray menu based on the row index."""
