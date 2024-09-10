@@ -2,6 +2,8 @@ import json
 import os
 from cryptography.fernet import Fernet
 import appdirs
+import shutil
+
 
 # Define the application name
 APP_NAME = "nuTTY"
@@ -45,3 +47,29 @@ def save_config(config):
 # Helper function to get connections file path
 def get_connections_file_path():
     return CONNECTIONS_FILE
+
+
+def find_terminals(self):
+    # List of common terminal emulators with their names and commands
+    common_terminal_names = {
+        "XTerm": ("xterm", "xterm -hold -e {ssh_command}"),
+        "GNOME Terminal": ("gnome-terminal", "gnome-terminal -- bash -c '{ssh_command}; exec bash'"),
+        "Konsole": ("konsole", "konsole -e bash -c '{ssh_command}; exec bash'"),
+        "XFCE Terminal": ("xfce4-terminal", "xfce4-terminal --hold -e '{ssh_command}'"),
+        "LXTerminal": ("lxterminal", "lxterminal -e bash -c '{ssh_command}; exec bash'"),
+        "Tilix": ("tilix", "tilix -e bash -c '{ssh_command}; exec bash'"),
+        "Alacritty": ("alacritty", "alacritty -e bash -c '{ssh_command}; exec bash'"),
+        "Kitty": ("kitty", "kitty bash -c '{ssh_command}; exec bash'"),
+        "URxvt": ("urxvt", "urxvt -hold -e {ssh_command}"),
+        "st": ("st", "st -e bash -c '{ssh_command}; exec bash'"),
+        "Eterm": ("eterm", "eterm -e bash -c '{ssh_command}; exec bash'"),
+        "Mate Terminal": ("mate-terminal", "mate-terminal -e bash -c '{ssh_command}; exec bash'")
+    }
+
+    available_terminal_emulators = {}
+
+    # Check if the terminal emulator command is available in the system PATH
+    for name, (command, _) in common_terminal_names.items():
+        if shutil.which(command):  # Check if the terminal command is available
+            available_terminal_emulators[name] = (command, common_terminal_names[name][1])  # Add to available terminals
+    return available_terminal_emulators

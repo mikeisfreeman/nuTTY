@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt
 from tray import create_tray_manager
 from model import ConnectionListModel
 from dialogs import AddConnectionDialog, EditConnectionDialog, AboutDialog
-from config import save_config, get_connections_file_path
+from config import save_config, get_connections_file_path, find_terminals
 import json
 import subprocess
 import os
@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
         self.connection_list_view.selectionModel().selectionChanged.connect(self.update_button_states)
         
         # Load the terminal emulator from config.json
-        self.find_terminals()
+        self.available_terminal_emulators = find_terminals()
         self.terminal_executable = self.config.get("terminal_emulator", "xfce4-terminal")  # Default to xfce4-terminal TODO: default to system default terminal emulator
         self.ssh_command_template = 'ssh {username}@{domain}'  # SSH command template
         
@@ -116,30 +116,6 @@ class MainWindow(QMainWindow):
         dlg = AboutDialog(self)
         dlg.exec()
 
-
-    def find_terminals(self):
-        # List of common terminal emulators with their names and commands
-        self.common_terminal_names = {
-            "XTerm": ("xterm", "xterm -hold -e {ssh_command}"),
-            "GNOME Terminal": ("gnome-terminal", "gnome-terminal -- bash -c '{ssh_command}; exec bash'"),
-            "Konsole": ("konsole", "konsole -e bash -c '{ssh_command}; exec bash'"),
-            "XFCE Terminal": ("xfce4-terminal", "xfce4-terminal --hold -e '{ssh_command}'"),
-            "LXTerminal": ("lxterminal", "lxterminal -e bash -c '{ssh_command}; exec bash'"),
-            "Tilix": ("tilix", "tilix -e bash -c '{ssh_command}; exec bash'"),
-            "Alacritty": ("alacritty", "alacritty -e bash -c '{ssh_command}; exec bash'"),
-            "Kitty": ("kitty", "kitty bash -c '{ssh_command}; exec bash'"),
-            "URxvt": ("urxvt", "urxvt -hold -e {ssh_command}"),
-            "st": ("st", "st -e bash -c '{ssh_command}; exec bash'"),
-            "Eterm": ("eterm", "eterm -e bash -c '{ssh_command}; exec bash'"),
-            "Mate Terminal": ("mate-terminal", "mate-terminal -e bash -c '{ssh_command}; exec bash'")
-        }
-
-        self.available_terminal_emulators = {}
-
-        # Check if the terminal emulator command is available in the system PATH
-        for name, (command, _) in self.common_terminal_names.items():
-            if shutil.which(command):  # Check if the terminal command is available
-                self.available_terminal_emulators[name] = (command, self.common_terminal_names[name][1])  # Add to available terminals
 
     def add_connection(self):
         dialog = AddConnectionDialog(self)
