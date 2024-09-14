@@ -61,6 +61,19 @@ class TrayManager(QObject):
         # Add the connections menu to the tray menu
         tray_menu.addMenu(connections_menu)
 
+        # Add separator
+        tray_menu.addSeparator()
+
+        # Restore action
+        restore_action = QAction("Restore", self.parent)
+        restore_action.triggered.connect(self.show_window_signal.emit)
+        tray_menu.addAction(restore_action)
+        
+        # Exit action
+        exit_action = QAction("Exit", self.parent)
+        exit_action.triggered.connect(self.exit_app_signal.emit)
+        tray_menu.addAction(exit_action)
+
     def tray_icon_activated(self, reason):
         """Handle tray icon click."""
         if reason == QSystemTrayIcon.DoubleClick:
