@@ -7,26 +7,21 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
 from tray import create_tray_manager
 from model import ConnectionListModel
-from dialogs import AddConnectionDialog, EditConnectionDialog, AboutDialog
-from config import save_config, get_connections_file_path, find_terminals
-import json
-import subprocess
-import os
-import shutil
-from delegates import ConnectionItemDelegate
+from dialogs import AddConnectionDialog, EditConnectionDialog
 
+from delegates import ConnectionItemDelegate
+from menu_bar import create_menu_bar
+from controller import Controller
 
 class MainWindow(QMainWindow):
     def __init__(self, config, cipher_suite):
         super().__init__()
+        self.controller = Controller(config, cipher_suite)
         self.config = config
-        self.cipher_suite = cipher_suite
-        self.available_terminal_emulators = {}
         # Setup the main window
         self.setWindowTitle("nuTTY")
         self.setGeometry(300, 200, 600, 400)
-        # Set the window icon
-        self.setWindowIcon(QIcon('assets/icons/nuTTY_64x64_dark.png'))  # Replace with the path to your icon
+        self.setWindowIcon(QIcon('assets/icons/nuTTY_64x64_dark.png'))
 
         # Central widget layout
         self.central_widget = QWidget()
@@ -35,8 +30,7 @@ class MainWindow(QMainWindow):
 
         # Replace QTableWidget with QListView
         self.connection_list_view = QListView()
-        self.connection_list_model = ConnectionListModel()  # Using the custom model
-        self.connection_list_view.setModel(self.connection_list_model)
+        self.connection_list_view.setModel(self.controller.connection_list_model)
         self.layout.addWidget(self.connection_list_view)
 
         # Connect the double-click event to connect_to_server
@@ -70,177 +64,100 @@ class MainWindow(QMainWindow):
         # Enable/disable buttons based on selection
         self.connection_list_view.selectionModel().selectionChanged.connect(self.update_button_states)
         
-        # Load the terminal emulator from config.json
-        self.available_terminal_emulators = find_terminals()
-        self.terminal_executable = self.config.get("terminal_emulator", "xfce4-terminal")  # Default to xfce4-terminal TODO: default to system default terminal emulator
-        self.ssh_command_template = 'ssh {username}@{domain}'  # SSH command template
-        
-        # Load connections
-        self.load_connections()
-        
         # System tray setup
-        self.tray_manager = create_tray_manager(self, self.connection_list_model)
+        self.tray_manager = create_tray_manager(self, self.controller.connection_list_model)
         self.tray_manager.show_window_signal.connect(self.show)
         self.tray_manager.exit_app_signal.connect(self.exit_app)
         self.tray_manager.connect_to_server_signal.connect(self.connect_to_server_from_tray)
 
         # Create the menu bar
-        self.create_menu_bar()
-
-    def create_menu_bar(self):
-        menu_bar = self.menuBar()
-
-        # File menu
-        file_menu = menu_bar.addMenu("File")
-        select_close_window_action = file_menu.addAction("Close Window")
-        select_close_window_action.triggered.connect(self.close)
-        select_close_window_action = file_menu.addAction("Exit")
-        select_close_window_action.triggered.connect(self.exit_app)
-
-        # Settings menu
-        settings_menu = menu_bar.addMenu("Settings")
-        select_emulator_action = settings_menu.addAction("Select Emulator")
-        select_emulator_action.triggered.connect(self.select_terminal_emulator)
-        minimize_on_close_action = settings_menu.addAction("Minimize to Tray on Close")
-        minimize_on_close_action.setCheckable(True)
-        minimize_on_close_action.setChecked(self.config.get("minimize_on_close", True))
-        minimize_on_close_action.toggled.connect(self.toggle_minimize_on_close)
-
-        # Help menu
-        help_menu = menu_bar.addMenu("Help")
-        about_action = help_menu.addAction("About nuTTY")
-        about_action.triggered.connect(self.show_about)
-
+        create_menu_bar(self)
 
     def show_about(self):
         dlg = AboutDialog(self)
         dlg.exec()
 
-
     def add_connection(self):
         dialog = AddConnectionDialog(self)
         if dialog.exec_():
-            # Get connection details from the dialog
             connection = dialog.get_connection_details()
-
-            # Add the new connection to the model
-            self.connection_list_model.add_connection(connection)
-
-            # Save the new connections to the file (since the list has changed)
-            self.save_connections()
-
-            # Update the tray menu with the new connection
+            self.controller.add_connection(connection)
             self.tray_manager.update_tray_connections()
 
-    def save_connections(self):
-        connections = []
-        # Iterate over the model to get all connections
-        for row in range(self.connection_list_model.rowCount()):
-            connection = self.connection_list_model.get_connection(row)
-            # Create a copy of the connection to avoid modifying the original
-            connection_copy = connection.copy()
-            # Encrypt the password if it exists
-            if connection_copy.get('password'):
-                connection_copy['password'] = self.cipher_suite.encrypt(connection_copy['password'].encode()).decode()
-            connections.append(connection_copy)
-
-        # Encrypt and save the connection data
-        encrypted_data = self.cipher_suite.encrypt(json.dumps(connections).encode())
-        with open(get_connections_file_path(), 'wb') as f:
-            f.write(encrypted_data)
-
-
-    def load_connections(self):
-        try:
-            # Read and decrypt the connection data from file
-            connections_file = get_connections_file_path()
-            if os.path.exists(connections_file):
-                with open(connections_file, 'rb') as f:
-                    encrypted_data = f.read()
-                decrypted_data = self.cipher_suite.decrypt(encrypted_data).decode()
-
-                # Parse the JSON data
-                connections = json.loads(decrypted_data)
-
-                # Add the connections to the model
-                for connection in connections:
-                    self.connection_list_model.add_connection(connection)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error loading connections: {e}")
-            
     def remove_connection(self):
-        # Get the selected row in the QListView
         selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
-        
         if selected_indexes:
-            # Ask the user for confirmation before removing
             confirm = QMessageBox.question(self, "Delete Connection", "Are you sure?", QMessageBox.Yes | QMessageBox.No)
             if confirm == QMessageBox.Yes:
-                # Remove the selected connection from the model
-                selected_row = selected_indexes[0].row()  # Get the row of the selected item
-                self.connection_list_model.remove_connection(selected_row)  # Use the model's remove method
-                
-                # Save the updated connection list to the file
-                self.save_connections()
-
-                # Update the tray menu after removing a connection
-                self.update_tray_connections(self.tray_icon.contextMenu())
-
+                selected_row = selected_indexes[0].row()
+                self.controller.remove_connection(selected_row)
+                self.tray_manager.update_tray_connections()
 
     def connect_to_server(self):
-        # Get the selected connection's index
         selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
-
         if selected_indexes:
             selected_row = selected_indexes[0].row()
-            # Retrieve the selected connection details
-            connection = self.connection_list_model.get_connection(selected_row)
-
-            if connection['protocol'] == 'SSH':
-                command = self.format_ssh_command(connection)
-            elif connection['protocol'] == 'Telnet':
-                command = self.format_telnet_command(connection)
-            else:
-                QMessageBox.critical(self, "Error", f"Unsupported protocol: {connection['protocol']}")
-                return
-
-            # Get the proper terminal command string format for the selected terminal emulator
-            terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
-
-            # Format the terminal command with the connection command
-            terminal_command = terminal_format.format(ssh_command=command)
-
+            connection = self.controller.connection_list_model.get_connection(selected_row)
             try:
-                # Execute the terminal command
-                subprocess.Popen(terminal_command, shell=True)
-
+                self.controller.connect_to_server(connection)
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")
+                QMessageBox.critical(self, "Error", str(e))
 
-    def format_ssh_command(self, connection):
-        ssh_command = f"ssh {connection['username']}@{connection['domain']}"
+    def edit_connection(self):
+        selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
+        if selected_indexes:
+            selected_row = selected_indexes[0].row()
+            connection = self.controller.connection_list_model.get_connection(selected_row)
+            dialog = EditConnectionDialog(self, connection)
+            if dialog.exec_():
+                updated_connection = dialog.get_connection_details()
+                self.controller.update_connection(selected_row, updated_connection)
+                self.tray_manager.update_tray_connections()
 
-        if connection.get('use_identity_file') and connection.get('identity_file'):
-            ssh_command += f" -i {connection['identity_file']}"
-        elif connection.get('password'):
-            ssh_command = f"sshpass -p {connection['password']} {ssh_command}"
-
-        if connection.get('x11'):
-            ssh_command += " -X"
-
-        return ssh_command
-
-    def format_telnet_command(self, connection):
-        telnet_command = f"telnet {connection['domain']}"
+    def select_terminal_emulator(self):
+        # Dialog to choose the preferred terminal emulator
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select Terminal Emulator")
+        layout = QVBoxLayout(dialog)
         
-        if connection.get('username') or connection.get('password'):
-            QMessageBox.warning(self, "Warning", "Telnet doesn't support secure authentication. Username and password will be sent in plain text.")
-        
-        return telnet_command
+        label = QLabel("Choose Terminal Emulator:")
+        layout.addWidget(label)
 
+        emulator_options = QComboBox()
 
+        # Iterate over the keys of the available_terminal_emulators dictionary
+        for name in self.controller.available_terminal_emulators.keys():
+            emulator_options.addItem(name)
 
+        layout.addWidget(emulator_options)
+
+        # Set the current selection to the previously chosen terminal emulator
+        for index, (name, (command, _)) in enumerate(self.controller.available_terminal_emulators.items()):
+            if command == self.controller.terminal_executable:
+                emulator_options.setCurrentIndex(index)
+
+        button_box = QHBoxLayout()
+        ok_button = QPushButton("OK")
+        ok_button.clicked.connect(lambda: self.set_terminal_emulator(dialog, emulator_options.currentIndex()))
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(dialog.reject)
+        button_box.addWidget(ok_button)
+        button_box.addWidget(cancel_button)
+        layout.addLayout(button_box)
+
+        if dialog.exec_():
+            selected_terminal = emulator_options.currentText()
+            self.controller.set_terminal_emulator(selected_terminal)
+
+    def set_terminal_emulator(self, dialog, selected_index):
+        """Set the terminal emulator based on the selected index."""
+        # Get the terminal name from the QComboBox by index
+        terminal_name = dialog.findChild(QComboBox).itemText(selected_index)
+
+        # Set the selected terminal name (not the command)
+        self.controller.set_terminal_emulator(terminal_name)
+
+        dialog.accept()
 
     def update_button_states(self):
         # Check if any connection is selected
@@ -251,15 +168,11 @@ class MainWindow(QMainWindow):
         self.connect_btn.setEnabled(has_selection)
         self.edit_btn.setEnabled(has_selection)
 
-
     def toggle_minimize_on_close(self, checked):
-        """Update the 'minimize on close' setting."""
-        self.config['minimize_on_close'] = checked
-        save_config(self.config)
+        self.controller.toggle_minimize_on_close(checked)
 
     def closeEvent(self, event):
-        """Override close event to minimize to tray instead of exiting."""
-        if self.config.get("minimize_on_close", True):
+        if self.controller.get_minimize_on_close():
             event.ignore()
             self.hide()
             self.tray_manager.show_message(
@@ -276,101 +189,13 @@ class MainWindow(QMainWindow):
         self.tray_manager.hide_tray_icon()
         QApplication.quit()  # Quit the application
 
-    def select_terminal_emulator(self):
-        # Dialog to choose the preferred terminal emulator
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Select Terminal Emulator")
-        layout = QVBoxLayout(dialog)
-        
-        label = QLabel("Choose Terminal Emulator:")
-        layout.addWidget(label)
-
-        emulator_options = QComboBox()
-
-        # Iterate over the keys of the available_terminal_emulators dictionary
-        for name in self.available_terminal_emulators.keys():
-            emulator_options.addItem(name)
-
-        layout.addWidget(emulator_options)
-
-
-        # Set the current selection to the previously chosen terminal emulator
-        for index, (name, (command, _)) in enumerate(self.available_terminal_emulators.items()):
-            if command == self.terminal_executable:
-                emulator_options.setCurrentIndex(index)
-
-
-        button_box = QHBoxLayout()
-        ok_button = QPushButton("OK")
-        ok_button.clicked.connect(lambda: self.set_terminal_emulator(dialog, emulator_options.currentIndex()))
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(dialog.reject)
-        button_box.addWidget(ok_button)
-        button_box.addWidget(cancel_button)
-        layout.addLayout(button_box)
-
-        dialog.exec_()
-
-    def set_terminal_emulator(self, dialog, selected_index):
-        """Set the terminal emulator based on the selected index."""
-        # Get the terminal name from the QComboBox by index
-        terminal_name = dialog.findChild(QComboBox).itemText(selected_index)
-
-        # Set the selected terminal name (not the command)
-        self.terminal_executable = terminal_name
-
-        # Save the new terminal emulator in config.json
-        self.config['terminal_emulator'] = self.terminal_executable
-        save_config(self.config)
-
-        dialog.accept()
-
-    def edit_connection(self):
-        # Get the selected connection's index
-        selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
-        
-        if selected_indexes:
-            selected_row = selected_indexes[0].row()
-            # Retrieve the selected connection details
-            connection = self.connection_list_model.get_connection(selected_row)
-            
-            # Open the edit dialog
-            dialog = EditConnectionDialog(self, connection)
-            if dialog.exec_():
-                # Get updated connection details from the dialog
-                updated_connection = dialog.get_connection_details()
-                
-                # Update the connection in the model
-                self.connection_list_model.update_connection(selected_row, updated_connection)
-                
-                # Save the updated connections to the file
-                self.save_connections()
-                
-                # Update the tray menu
-                self.tray_manager.update_tray_connections()
-
     def connect_to_server_from_tray(self, row):
         """Connect to a server from the tray menu based on the row index."""
         if row >= 0:
             # Retrieve the connection details
-            connection = self.connection_list_model.get_connection(row)
-            username = connection['username']
-            domain = connection['domain']
-
-            # Format the SSH command
-            ssh_command = self.ssh_command_template.format(username=username, domain=domain)
-
-            # Get the proper terminal command string format for the selected terminal emulator
-            terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
-
-            # Format the terminal command with the SSH command
-            terminal_command = terminal_format.format(ssh_command=ssh_command)
-
+            connection = self.controller.connection_list_model.get_connection(row)
             try:
-                # Execute the terminal command
-                subprocess.Popen(terminal_command, shell=True)
+                self.controller.connect_to_server(connection)
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")
-
-    # Add other necessary methods here (e.g., find_terminals, load_connections, create_menu_bar, etc.)
+                QMessageBox.critical(self, "Error", str(e))
 

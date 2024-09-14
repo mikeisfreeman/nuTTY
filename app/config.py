@@ -49,7 +49,7 @@ def get_connections_file_path():
     return CONNECTIONS_FILE
 
 
-def find_terminals(self):
+def find_terminals():
     # List of common terminal emulators with their names and commands
     common_terminal_names = {
         "XTerm": ("xterm", "xterm -hold -e {ssh_command}"),
