@@ -1,10 +1,8 @@
-from PyQt5.QtWidgets import QMessageBox
 from model import ConnectionListModel
 from config import save_config, get_connections_file_path, find_terminals, load_theme
 import json
 import subprocess
 import os
-import shutil
 import logging
 
 class Controller:
@@ -129,9 +127,6 @@ class Controller:
     def toggle_minimize_on_close(self, value):
         self.config['minimize_on_close'] = value
         save_config(self.config)
-
-    def get_available_themes(self):
-        return self.get_available_themes()
 
     def set_theme(self, theme_name):
         self.config['theme'] = theme_name

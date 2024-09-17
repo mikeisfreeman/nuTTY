@@ -4,8 +4,10 @@ from cryptography.fernet import Fernet
 import appdirs
 import shutil
 import keyring
+# Global DEV flag
+DEV = True  # Set this to False for production
 
-# Define the application name
+
 APP_NAME = "nuTTY"
 KEY_ID = "encryption_key"
 
@@ -18,18 +20,10 @@ os.makedirs(CONFIG_DIR, exist_ok=True)
 # Define file paths
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 CONNECTIONS_FILE = os.path.join(CONFIG_DIR, 'connections.dat')
-
-# Define themes directory
 THEMES_DIR = os.path.join(CONFIG_DIR, 'themes')
-
-# Ensure the themes directory exists
-os.makedirs(THEMES_DIR, exist_ok=True)
 
 # Development themes directory
 DEV_THEMES_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'themes')
-
-# Global DEV flag
-DEV = True  # Set this to False for production
 
 # Add this new function at the top level of the module
 def initialize_config():

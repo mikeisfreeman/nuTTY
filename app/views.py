@@ -3,65 +3,20 @@ from PyQt5.QtWidgets import (
     QPushButton, QHBoxLayout, QDialog, QLabel, QComboBox, 
     QMessageBox, QSystemTrayIcon, QStyleFactory, QMenu
 )
+from PyQt5.QtCore import Qt
+
 from PyQt5.QtGui import QIcon
 from tray import create_tray_manager
 from dialogs import AddConnectionDialog, EditConnectionDialog, AboutDialog
 from delegates import ConnectionItemDelegate
 from menu_bar import create_menu_bar
 from controller import Controller
-from themes import ThemeDialog
 from config import load_theme, save_config
 from preferences_dialog import PreferencesDialog
 import logging
-import json
-import re
-
-def pretty_print(data):
-    if isinstance(data, str) and '{' in data and '}' in data:
-        # This looks like a CSS-like string
-        return format_css_like_string(data)
-    try:
-        # Try to format as JSON
-        return json.dumps(data, indent=4, sort_keys=True, separators=(',', ': '), ensure_ascii=False)
-    except TypeError:
-        # If it's not JSON-serializable, return as is
-        return str(data)
-
-def format_css_like_string(css_string):
-    # Remove newlines and extra spaces
-    css_string = re.sub(r'\s+', ' ', css_string.strip())
-    
-    # Split into individual rules
-    rules = re.split(r'(\w+(?:\:\w+)?\s*\{[^\}]+\})', css_string)
-    
-    formatted = []
-    for rule in rules:
-        if rule.strip():
-            # Format each rule
-            formatted.append(format_rule(rule.strip()))
-    
-    return '\n\n'.join(formatted)
-
-def format_rule(rule):
-    # Split selector and properties
-    parts = rule.split('{')
-    if len(parts) != 2:
-        return rule
-    
-    selector, properties = parts
-    properties = properties.strip('} ')
-    
-    # Format properties
-    formatted_properties = []
-    for prop in properties.split(';'):
-        if prop.strip():
-            formatted_properties.append(f'    {prop.strip()};')
-    
-    # Combine formatted parts
-    return f'{selector.strip()} {{\n{chr(10).join(formatted_properties)}\n}}'
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class MainWindow(QMainWindow):
     def __init__(self, config, cipher_suite):
@@ -69,19 +24,21 @@ class MainWindow(QMainWindow):
             super().__init__()
             self.controller = Controller(config, cipher_suite)
             self.config = config
-            self.theme_data = {}  # Add this line to store the original theme data
+            self.theme_data = {}
             
-            # Initialize theme_data
             self.current_theme = config.get('theme', 'coffee')
             self.theme_data = load_theme(self.current_theme)
             
-            # Set the application style to "Fusion" for a more modern look
             QApplication.setStyle(QStyleFactory.create("Fusion"))
             
-            # Setup the main window
             self.setWindowTitle("nuTTY")
-            self.setGeometry(300, 200, 400, 700)
+            self.setFixedSize(400, 700)
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowMaximizeButtonHint)
             self.setWindowIcon(QIcon('assets/icons/nuTTY_64x64_dark.png'))
+
+            # Prevent resizing
+            self.setMinimumSize(400, 700)
+            self.setMaximumSize(400, 700)
 
             # Central widget layout
             self.central_widget = QWidget()
@@ -147,9 +104,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Initialization Error", f"An error occurred while starting the application: {str(e)}")
             raise
 
-    def show_theme_dialog(self):
-        dialog = ThemeDialog(self)
-        dialog.exec_()
 
     def apply_theme(self, theme_data):
         self.theme_data = theme_data  # Store the original theme data
@@ -270,11 +224,7 @@ class MainWindow(QMainWindow):
             menu.setStyleSheet(menu_style)
 
         # Update the delegate with the original theme data
-        logging.debug(f"Painting ConnectionItemDelegates. Theme data:\n{pretty_print(self.theme_data)}")
-        logging.debug(f"Painting ConnectionItemDelegates. window_style data:\n{pretty_print(window_style)}")
-        logging.debug(f"Painting ConnectionItemDelegates. list_view_style data:\n{pretty_print(list_view_style)}")
-        logging.debug(f"Painting ConnectionItemDelegates. button_style data:\n{pretty_print(button_style)}")
-
+        
         self.connection_list_view.setItemDelegate(ConnectionItemDelegate(self.theme_data))
 
         # Save the current theme

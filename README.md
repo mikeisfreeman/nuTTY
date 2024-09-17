@@ -51,7 +51,10 @@ There are only a few terminal emulators supported and I have only tested connect
 ------------------------
 ## Screenshots
 
-![nuTTY SSH Manager](screenshots/mainwindow.png)
+![nuTTY SSH Manager](screenshots/mainwindow_matrix.png)
+![nuTTY SSH Manager](screenshots/mainwindow_dark.png)
+![nuTTY SSH Manager](screenshots/mainwindow_light.png)
+![nuTTY SSH Manager](screenshots/mainwindow_darcula.png)
 ![nuTTY SSH Manager](screenshots/tray.png)
 ------------------------
 ## Installation
@@ -115,5 +118,7 @@ nuTTY is open-source software licensed under the MIT License. See the LICENSE fi
 Special thanks to all contributors and users who have or will provided feedback and suggestions to make nuTTY a better tool for managing SSH sessions.
 
 **Author**: Mike
+
 **Version**: 0.1.2
+
 **Repository**: [[nuTTY](https://github.com/mikeisfreeman/nuTTY)]

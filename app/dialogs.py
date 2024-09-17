@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QComboBox, QCheckBox, QHBoxLayout, QPushButton, QMessageBox, QFileDialog
-from PyQt5.QtGui import QPixmap, QDesktopServices
-from PyQt5.QtCore import Qt, QUrl
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt
 
 class AddConnectionDialog(QDialog):
     def __init__(self, parent=None):

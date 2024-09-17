@@ -1,20 +1,4 @@
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QWidget, QListView, 
-    QPushButton, QHBoxLayout, QDialog, QLabel, QComboBox, 
-    QMessageBox, QSystemTrayIcon,QMenuBar, QAction
-)
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import Qt
-from tray import create_tray_manager
-from model import ConnectionListModel
-from dialogs import AddConnectionDialog, EditConnectionDialog, AboutDialog
-from config import save_config, get_connections_file_path, find_terminals
-import json
-import subprocess
-import os
-import shutil
-from delegates import ConnectionItemDelegate
-from themes import ThemeDialog
+from PyQt5.QtWidgets import (QMainWindow)
 
 def create_menu_bar(parent: QMainWindow):
     menu_bar = parent.menuBar()

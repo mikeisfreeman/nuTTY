@@ -2,7 +2,6 @@ import sys
 from PyQt5.QtWidgets import QApplication
 from views import MainWindow
 from config import load_config, load_or_generate_key, initialize_config
-import os
 
 
 def main():
