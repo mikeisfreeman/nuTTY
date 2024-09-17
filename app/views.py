@@ -1,362 +1,475 @@
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QListView, 
     QPushButton, QHBoxLayout, QDialog, QLabel, QComboBox, 
-    QMessageBox, QSystemTrayIcon,QMenu, QAction
+    QMessageBox, QSystemTrayIcon, QStyleFactory, QMenu
 )
 from PyQt5.QtGui import QIcon
-from tray import setup_tray_icon
-from model import ConnectionListModel
-from dialogs import AddConnectionDialog, AboutDialog
-from config import save_config
-import json
-import subprocess
-import os
-import shutil
+from tray import create_tray_manager
+from dialogs import AddConnectionDialog, EditConnectionDialog, AboutDialog
 from delegates import ConnectionItemDelegate
+from menu_bar import create_menu_bar
+from controller import Controller
+from themes import ThemeDialog
+from config import load_theme, save_config
+from preferences_dialog import PreferencesDialog
+import logging
+import json
+import re
 
+def pretty_print(data):
+    if isinstance(data, str) and '{' in data and '}' in data:
+        # This looks like a CSS-like string
+        return format_css_like_string(data)
+    try:
+        # Try to format as JSON
+        return json.dumps(data, indent=4, sort_keys=True, separators=(',', ': '), ensure_ascii=False)
+    except TypeError:
+        # If it's not JSON-serializable, return as is
+        return str(data)
+
+def format_css_like_string(css_string):
+    # Remove newlines and extra spaces
+    css_string = re.sub(r'\s+', ' ', css_string.strip())
+    
+    # Split into individual rules
+    rules = re.split(r'(\w+(?:\:\w+)?\s*\{[^\}]+\})', css_string)
+    
+    formatted = []
+    for rule in rules:
+        if rule.strip():
+            # Format each rule
+            formatted.append(format_rule(rule.strip()))
+    
+    return '\n\n'.join(formatted)
+
+def format_rule(rule):
+    # Split selector and properties
+    parts = rule.split('{')
+    if len(parts) != 2:
+        return rule
+    
+    selector, properties = parts
+    properties = properties.strip('} ')
+    
+    # Format properties
+    formatted_properties = []
+    for prop in properties.split(';'):
+        if prop.strip():
+            formatted_properties.append(f'    {prop.strip()};')
+    
+    # Combine formatted parts
+    return f'{selector.strip()} {{\n{chr(10).join(formatted_properties)}\n}}'
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class MainWindow(QMainWindow):
     def __init__(self, config, cipher_suite):
-        super().__init__()
-        self.config = config
-        self.cipher_suite = cipher_suite
-        self.avaliable_terminal_emulators = {}
-        # Setup the main window
-        self.setWindowTitle("nuTTY")
-        self.setGeometry(300, 200, 600, 400)
-        # Set the window icon
-        self.setWindowIcon(QIcon('assets/icons/nuTTY_64x64_dark.png'))  # Replace with the path to your icon
-
-        
-
-         # Central widget layout
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        self.layout = QVBoxLayout(self.central_widget)
-
-        # Replace QTableWidget with QListView
-        self.connection_list_view = QListView()
-        self.connection_list_model = ConnectionListModel()  # Using the custom model
-        self.connection_list_view.setModel(self.connection_list_model)
-        self.layout.addWidget(self.connection_list_view)
-
-        # Connect the double-click event to connect_to_server
-        self.connection_list_view.doubleClicked.connect(self.connect_to_server)
-
-        # Buttons for adding/removing connections
-        btn_layout = QHBoxLayout()
-        self.add_btn = QPushButton("+")
-        self.add_btn.clicked.connect(self.add_connection)
-        self.remove_btn = QPushButton("-")
-        self.remove_btn.setEnabled(False)
-        self.remove_btn.clicked.connect(self.remove_connection)
-
-        self.connect_btn = QPushButton("Connect")
-        self.connect_btn.setEnabled(False)
-        self.connect_btn.clicked.connect(self.connect_to_server)
-
-        btn_layout.addWidget(self.add_btn)
-        btn_layout.addWidget(self.remove_btn)
-        btn_layout.addWidget(self.connect_btn)
-        self.layout.addLayout(btn_layout)
-
-        # Use the custom delegate for the connection list view
-        self.connection_list_view.setItemDelegate(ConnectionItemDelegate())
-
-        # Enable/disable buttons based on selection
-        self.connection_list_view.selectionModel().selectionChanged.connect(self.update_button_states)
-        
-
-        # Load the terminal emulator from config.json
-        self.find_terminals() # TODO move the following line into this method.
-        self.terminal_executable = self.config.get("terminal_emulator", "xfce4-terminal")  # Default to xfce4-terminal TODO: default to system default terminal emulator
-        self.ssh_command_template = 'ssh {username}@{domain}'  # SSH command template
-        
-        # Load connections
-        self.load_connections()
-        
-        # System tray setup
-        self.tray_icon = setup_tray_icon(self)
-
-        # Create the menu bar
-        self.create_menu_bar()
-
-    def create_menu_bar(self):
-        menu_bar = self.menuBar()
-
-        # File menu
-        file_menu = menu_bar.addMenu("File")
-        select_close_window_action = file_menu.addAction("Close Window")
-        select_close_window_action.triggered.connect(self.close)
-        select_close_window_action = file_menu.addAction("Exit")
-        select_close_window_action.triggered.connect(self.exit_app)
-
-        # Settings menu
-        settings_menu = menu_bar.addMenu("Settings")
-        select_emulator_action = settings_menu.addAction("Select Emulator")
-        select_emulator_action.triggered.connect(self.select_terminal_emulator)
-        minimize_on_close_action = settings_menu.addAction("Minimize to Tray on Close")
-        minimize_on_close_action.setCheckable(True)
-        minimize_on_close_action.setChecked(self.config.get("minimize_on_close", True))
-        minimize_on_close_action.toggled.connect(self.toggle_minimize_on_close)
-
-        # Help menu
-        help_menu = menu_bar.addMenu("Help")
-        about_action = help_menu.addAction("About nuTTY")
-        about_action.triggered.connect(self.show_about)
-
-
-    def show_about(self):
-        dlg = AboutDialog(self)
-        dlg.exec()
-
-
-    def find_terminals(self):
-        # List of common terminal emulators with their names and commands
-        self.common_terminal_names = {
-            "XTerm": ("xterm", "xterm -hold -e {ssh_command}"),
-            "GNOME Terminal": ("gnome-terminal", "gnome-terminal -- bash -c '{ssh_command}; exec bash'"),
-            "Konsole": ("konsole", "konsole -e bash -c '{ssh_command}; exec bash'"),
-            "XFCE Terminal": ("xfce4-terminal", "xfce4-terminal --hold -e '{ssh_command}'"),
-            "LXTerminal": ("lxterminal", "lxterminal -e bash -c '{ssh_command}; exec bash'"),
-            "Tilix": ("tilix", "tilix -e bash -c '{ssh_command}; exec bash'"),
-            "Alacritty": ("alacritty", "alacritty -e bash -c '{ssh_command}; exec bash'"),
-            "Kitty": ("kitty", "kitty bash -c '{ssh_command}; exec bash'"),
-            "URxvt": ("urxvt", "urxvt -hold -e {ssh_command}"),
-            "st": ("st", "st -e bash -c '{ssh_command}; exec bash'"),
-            "Eterm": ("eterm", "eterm -e bash -c '{ssh_command}; exec bash'"),
-            "Mate Terminal": ("mate-terminal", "mate-terminal -e bash -c '{ssh_command}; exec bash'")
-        }
-
-        self.available_terminal_emulators = {}
-
-        # Check if the terminal emulator command is available in the system PATH
-        for name, (command, _) in self.common_terminal_names.items():
-            if shutil.which(command):  # Check if the terminal command is available
-                self.available_terminal_emulators[name] = (command, self.common_terminal_names[name][1])  # Add to available terminals
-
-    def add_connection(self):
-        dialog = AddConnectionDialog(self)
-        if dialog.exec_():
-            # Get connection details from the dialog
-            connection = dialog.get_connection_details()
-
-            # Add the new connection to the model
-            self.connection_list_model.add_connection(connection)
-
-            # Save the new connections to the file (since the list has changed)
-            self.save_connections()
-
-            # Update the tray menu with the new connection
-            self.update_tray_connections(self.tray_icon.contextMenu())
-
-    def save_connections(self):
-        connections = []
-        # Iterate over the model to get all connections
-        for row in range(self.connection_list_model.rowCount()):
-            connection = self.connection_list_model.get_connection(row)
-            connections.append(connection)
-
-        # Encrypt and save the connection data
-        encrypted_data = self.cipher_suite.encrypt(json.dumps(connections).encode())
-        with open('connections.dat', 'wb') as f:
-            f.write(encrypted_data)
-
-
-    def load_connections(self):
         try:
-            # Read and decrypt the connection data from file
-            if os.path.exists('connections.dat'):
-                with open('connections.dat', 'rb') as f:
-                    encrypted_data = f.read()
-                decrypted_data = self.cipher_suite.decrypt(encrypted_data).decode()
+            super().__init__()
+            self.controller = Controller(config, cipher_suite)
+            self.config = config
+            self.theme_data = {}  # Add this line to store the original theme data
+            
+            # Initialize theme_data
+            self.current_theme = config.get('theme', 'coffee')
+            self.theme_data = load_theme(self.current_theme)
+            
+            # Set the application style to "Fusion" for a more modern look
+            QApplication.setStyle(QStyleFactory.create("Fusion"))
+            
+            # Setup the main window
+            self.setWindowTitle("nuTTY")
+            self.setGeometry(300, 200, 400, 700)
+            self.setWindowIcon(QIcon('assets/icons/nuTTY_64x64_dark.png'))
 
-                # Parse the JSON data
-                connections = json.loads(decrypted_data)
+            # Central widget layout
+            self.central_widget = QWidget()
+            self.setCentralWidget(self.central_widget)
+            self.layout = QVBoxLayout(self.central_widget)
 
-                # Add the connections to the model
-                for connection in connections:
-                    self.connection_list_model.add_connection(connection)
+            # Connection list view
+            self.connection_list_view = QListView()
+            self.connection_list_view.setModel(self.controller.connection_list_model)
+            self.layout.addWidget(self.connection_list_view)
+
+            # Connect the double-click event to connect_to_server
+            self.connection_list_view.doubleClicked.connect(self.connect_to_server)
+
+            # Buttons for adding/removing connections
+            btn_layout = QHBoxLayout()
+            self.add_btn = QPushButton("+")
+            self.add_btn.clicked.connect(self.add_connection)
+            self.remove_btn = QPushButton("-")
+            self.remove_btn.setEnabled(False)
+            self.remove_btn.clicked.connect(self.remove_connection)
+            self.connect_btn = QPushButton("Connect")
+            self.connect_btn.setEnabled(False)
+            self.connect_btn.clicked.connect(self.connect_to_server)
+            self.edit_btn = QPushButton("Edit")
+            self.edit_btn.setEnabled(False)
+            self.edit_btn.clicked.connect(self.edit_connection)
+
+            self.duplicate_btn = QPushButton("Duplicate")
+            self.duplicate_btn.setEnabled(False)
+            self.duplicate_btn.clicked.connect(self.duplicate_connection)
+
+            btn_layout.addWidget(self.add_btn)
+            btn_layout.addWidget(self.remove_btn)
+            btn_layout.addWidget(self.edit_btn)
+            btn_layout.addWidget(self.duplicate_btn)
+            btn_layout.addWidget(self.connect_btn)
+            self.layout.addLayout(btn_layout)
+
+            # Use the custom delegate for the connection list view
+            self.connection_list_view.setItemDelegate(ConnectionItemDelegate(self.theme_data))
+
+            # Enable/disable buttons based on selection
+            self.connection_list_view.selectionModel().selectionChanged.connect(self.update_button_states)
+            
+            # System tray setup
+            self.tray_manager = create_tray_manager(self, self.controller.connection_list_model)
+            self.tray_manager.show_window_signal.connect(self.show)
+            self.tray_manager.exit_app_signal.connect(self.exit_app)
+            self.tray_manager.connect_to_server_signal.connect(self.connect_to_server_from_tray)
+
+            # Create the menu bar
+            create_menu_bar(self)
+
+            # Apply the initial theme
+            self.apply_theme(self.theme_data)
+            
+            # Re-save connections to ensure they're encrypted with the new key
+            self.controller.save_connections()
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error loading connections: {e}")
-            
-    def remove_connection(self):
-        # Get the selected row in the QListView
-        selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
-        
-        if selected_indexes:
-            # Ask the user for confirmation before removing
-            confirm = QMessageBox.question(self, "Delete Connection", "Are you sure?", QMessageBox.Yes | QMessageBox.No)
-            if confirm == QMessageBox.Yes:
-                # Remove the selected connection from the model
-                selected_row = selected_indexes[0].row()  # Get the row of the selected item
-                self.connection_list_model.remove_connection(selected_row)  # Use the model's remove method
-                
-                # Save the updated connection list to the file
-                self.save_connections()
+            logging.error(f"Error initializing MainWindow: {str(e)}")
+            QMessageBox.critical(self, "Initialization Error", f"An error occurred while starting the application: {str(e)}")
+            raise
 
-                # Update the tray menu after removing a connection
-                self.update_tray_connections(self.tray_icon.contextMenu())
-
-
-    def connect_to_server(self):
-        # Get the selected connection's index
-        selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
-
-        if selected_indexes:
-            selected_row = selected_indexes[0].row()
-            # Retrieve the selected connection details
-            connection = self.connection_list_model.get_connection(selected_row)
-
-            # Format the SSH command using the selected connection's details
-            ssh_command = self.ssh_command_template.format(
-                username=connection['username'], 
-                domain=connection['domain']
-            )
-
-            # Get the proper terminal command string format for the selected terminal emulator
-            terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
-
-            # Format the terminal command with the SSH command
-            terminal_command = terminal_format.format(ssh_command=ssh_command)
-
-            try:
-                # Execute the terminal command
-                subprocess.Popen(terminal_command, shell=True)
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")
-
-
-
-
-    def update_button_states(self):
-        # Check if any connection is selected
-        has_selection = len(self.connection_list_view.selectionModel().selectedIndexes()) > 0
-
-        # Enable/disable buttons based on whether a connection is selected
-        self.remove_btn.setEnabled(has_selection)
-        self.connect_btn.setEnabled(has_selection)
-
-
-    def exit_app(self):
-        """Exit the application completely."""
-        self.tray_icon.hide()  # Hide the tray icon
-        QApplication.quit()  # Quit the application
-
-    def toggle_minimize_on_close(self, checked):
-        """Update the 'minimize on close' setting."""
-        self.config['minimize_on_close'] = checked
-        save_config(self.config)
-
-    def closeEvent(self, event):
-        """Override close event to minimize to tray instead of exiting."""
-        if self.config.get("minimize_on_close", True):
-            event.ignore()
-            self.hide()
-            self.tray_icon.showMessage(
-                "nuTTY SSH Manager",
-                "Application minimized to tray.",
-                QIcon("assets/icons/nuTTY_64x64_dark_notice.png"),
-                2000
-            )
-        else:
-            self.exit_app()
-
-    def select_terminal_emulator(self):
-        # Dialog to choose the preferred terminal emulator
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Select Terminal Emulator")
-        layout = QVBoxLayout(dialog)
-        
-        label = QLabel("Choose Terminal Emulator:")
-        layout.addWidget(label)
-
-        emulator_options = QComboBox()
-
-        # Iterate over the keys of the available_terminal_emulators dictionary
-        for name in self.available_terminal_emulators.keys():
-            emulator_options.addItem(name)
-
-        layout.addWidget(emulator_options)
-
-
-        # Set the current selection to the previously chosen terminal emulator
-        for index, (name, (command, _)) in enumerate(self.available_terminal_emulators.items()):
-            if command == self.terminal_executable:
-                emulator_options.setCurrentIndex(index)
-
-
-        button_box = QHBoxLayout()
-        ok_button = QPushButton("OK")
-        ok_button.clicked.connect(lambda: self.set_terminal_emulator(dialog, emulator_options.currentIndex()))
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(dialog.reject)
-        button_box.addWidget(ok_button)
-        button_box.addWidget(cancel_button)
-        layout.addLayout(button_box)
-
+    def show_theme_dialog(self):
+        dialog = ThemeDialog(self)
         dialog.exec_()
 
-    def set_terminal_emulator(self, dialog, selected_index):
-        """Set the terminal emulator based on the selected index."""
-        # Get the terminal name from the QComboBox by index
-        terminal_name = dialog.findChild(QComboBox).itemText(selected_index)
+    def apply_theme(self, theme_data):
+        self.theme_data = theme_data  # Store the original theme data
+        if not theme_data:
+            return
 
-        # Set the selected terminal name (not the command)
-        self.terminal_executable = terminal_name
+        # Apply global styles
+        global_style = "QWidget { "
+        for key, value in theme_data.items():
+            if key.startswith("global_"):
+                global_style += f"{key.replace('global_', '')}: {value}; "
+        global_style += "}"
+        
+        # Apply window styles
+        window_style = "QMainWindow { "
+        for key, value in theme_data.items():
+            if key.startswith("window_"):
+                if key == "window_background-image":
+                    window_style += f"background-image: {value}; "
+                    window_style += "background-position: center; "
+                    window_style += "background-repeat: no-repeat; "
+                    window_style += "background-attachment: fixed; "
+                else:
+                    window_style += f"{key.replace('window_', '')}: {value}; "
+        window_style += "}"
+        
+        # Set the window style
+        self.setStyleSheet(window_style)
+        
+        # Apply QListView styles
+        list_view_style = "QListView { "
+        for key, value in theme_data.items():
+            if key.startswith("list_view_") and not key.startswith("list_view_item_"):
+                list_view_style += f"{key.replace('list_view_', '')}: {value}; "
+        list_view_style += "} "
+        
+        # Apply QListView item styles
+        list_view_style += "QListView::item { "
+        for key, value in theme_data.items():
+            if key.startswith("list_view_item_") and not key.startswith("list_view_item_selected_"):
+                list_view_style += f"{key.replace('list_view_item_', '')}: {value}; "
+        list_view_style += "} "
+        
+        # Apply QListView selected item styles
+        list_view_style += "QListView::item:selected { "
+        for key, value in theme_data.items():
+            if key.startswith("list_view_item_selected_"):
+                list_view_style += f"{key.replace('list_view_item_selected_', '')}: {value}; "
+        list_view_style += "}"
+        
+        self.connection_list_view.setStyleSheet(list_view_style)
 
-        # Save the new terminal emulator in config.json
-        self.config['terminal_emulator'] = self.terminal_executable
+        # Apply QPushButton styles
+        button_style = "QPushButton { "
+        for key, value in theme_data.items():
+            if key.startswith("button_") and not any(x in key for x in ["hover", "pressed", "disabled"]):
+                button_style += f"{key.replace('button_', '')}: {value}; "
+        button_style += "} "
+        
+        # Apply QPushButton hover styles
+        button_style += "QPushButton:hover { "
+        for key, value in theme_data.items():
+            if key.startswith("button_hover_"):
+                button_style += f"{key.replace('button_hover_', '')}: {value}; "
+        button_style += "} "
+        
+        # Apply QPushButton pressed styles
+        button_style += "QPushButton:pressed { "
+        for key, value in theme_data.items():
+            if key.startswith("button_pressed_"):
+                button_style += f"{key.replace('button_pressed_', '')}: {value}; "
+        button_style += "} "
+        
+        # Apply QPushButton disabled styles
+        button_style += "QPushButton:disabled { "
+        for key, value in theme_data.items():
+            if key.startswith("button_disabled_"):
+                button_style += f"{key.replace('button_disabled_', '')}: {value}; "
+        button_style += "}"
+        
+        for button in [self.add_btn, self.remove_btn, self.connect_btn, self.edit_btn, self.duplicate_btn]:
+            button.setStyleSheet(button_style)
+
+        # Apply QMenuBar styles
+        menu_bar_style = "QMenuBar { "
+        menu_bar_style += f"background-color: {theme_data.get('global_background-color', '#000000')}; "
+        menu_bar_style += f"color: {theme_data.get('global_color', '#00ff00')}; "
+        menu_bar_style += f"border-bottom: {theme_data.get('menu_border',  '1px solid #00ff00')}; "
+        menu_bar_style += "} "
+        
+        menu_bar_style += "QMenuBar::item { "
+        menu_bar_style += "background-color: transparent; "
+        menu_bar_style += "} "
+        
+        menu_bar_style += "QMenuBar::item:selected { "
+        menu_bar_style += f"background-color: {theme_data.get('list_view_item_selected_background-color', 'rgba(0, 80, 0, 200)')}; "
+        menu_bar_style += "} "
+        
+        self.menuBar().setStyleSheet(menu_bar_style)
+
+        # Apply QMenu styles
+        menu_style = "QMenu { "
+        menu_style += f"background-color: {theme_data.get('global_background-color', '#000000')}; "
+        menu_style += f"color: {theme_data.get('global_color', '#00ff00')}; "
+        menu_style += f"border: {theme_data.get('menu_border',  '1px solid #00ff00')}; "
+        menu_style += "} "
+        
+        menu_style += "QMenu::item { "
+        menu_style += "background-color: transparent; "
+        menu_style += "} "
+        
+        menu_style += "QMenu::item:selected { "
+        menu_style += f"background-color: {theme_data.get('list_view_item_selected_background-color', 'rgba(0, 80, 0, 200)')}; "
+        menu_style += "} "
+        
+        # Apply to all menus
+        for menu in self.menuBar().findChildren(QMenu):
+            menu.setStyleSheet(menu_style)
+
+        # Update the delegate with the original theme data
+        logging.debug(f"Painting ConnectionItemDelegates. Theme data:\n{pretty_print(self.theme_data)}")
+        logging.debug(f"Painting ConnectionItemDelegates. window_style data:\n{pretty_print(window_style)}")
+        logging.debug(f"Painting ConnectionItemDelegates. list_view_style data:\n{pretty_print(list_view_style)}")
+        logging.debug(f"Painting ConnectionItemDelegates. button_style data:\n{pretty_print(button_style)}")
+
+        self.connection_list_view.setItemDelegate(ConnectionItemDelegate(self.theme_data))
+
+        # Save the current theme
+        self.current_theme = theme_data.get('name', 'darcula')
+        self.config['theme'] = self.current_theme
         save_config(self.config)
 
-        dialog.accept()
-    def tray_icon_activated(self, reason):
-        """Handle tray icon click."""
-        if reason == QSystemTrayIcon.DoubleClick:
-            self.show()
-    
-    def update_tray_connections(self, tray_menu):
-        """Dynamically populate the tray menu with a list of connections."""
-        # Clear any existing connections to avoid duplicates
-        tray_menu.clear()
+    def add_connection(self):
+        try:
+            dialog = AddConnectionDialog(self)
+            if dialog.exec_():
+                connection = dialog.get_connection_details()
+                self.controller.add_connection(connection)
+                self.tray_manager.update_tray_connections()
+        except Exception as e:
+            logging.error(f"Error adding connection: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to add connection: {str(e)}")
 
-        # Add a section for the connections
-        connections_menu = QMenu("Connections", self)
+    def remove_connection(self):
+        try:
+            selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
+            if selected_indexes:
+                confirm = QMessageBox.question(self, "Delete Connection", "Confirm deletion?  This cannot be undone", QMessageBox.Yes | QMessageBox.No)
+                if confirm == QMessageBox.Yes:
+                    selected_row = selected_indexes[0].row()
+                    self.controller.remove_connection(selected_row)
+                    self.tray_manager.update_tray_connections()
+        except Exception as e:
+            logging.error(f"Error removing connection: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to remove connection: {str(e)}")
 
-        # Loop through the model and add each connection as an action in the tray menu
-        for row in range(self.connection_list_model.rowCount()):
-            connection = self.connection_list_model.get_connection(row)
+    def connect_to_server(self):
+        try:
+            selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
+            if selected_indexes:
+                selected_row = selected_indexes[0].row()
+                connection = self.controller.connection_list_model.get_connection(selected_row)
+                self.controller.connect_to_server(connection)
+        except Exception as e:
+            logging.error(f"Error connecting to server: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to connect to server: {str(e)}")
 
-            connection_action = QAction(f"{connection['name']} - {connection['domain']}", self)
-            connection_action.triggered.connect(lambda checked, row=row: self.connect_to_server_from_tray(row))
-            connections_menu.addAction(connection_action)
+    def edit_connection(self):
+        try:
+            selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
+            if selected_indexes:
+                selected_row = selected_indexes[0].row()
+                connection = self.controller.connection_list_model.get_connection(selected_row)
+                dialog = EditConnectionDialog(self, connection)
+                if dialog.exec_():
+                    updated_connection = dialog.get_connection_details()
+                    self.controller.update_connection(selected_row, updated_connection)
+                    self.tray_manager.update_tray_connections()
+        except Exception as e:
+            logging.error(f"Error editing connection: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to edit connection: {str(e)}")
 
-        # Add the connections menu to the tray menu
-        tray_menu.addMenu(connections_menu)
+    def duplicate_connection(self):
+        try:
+            selected_indexes = self.connection_list_view.selectionModel().selectedIndexes()
+            if selected_indexes:
+                selected_row = selected_indexes[0].row()
+                self.controller.duplicate_connection(selected_row)
+                self.tray_manager.update_tray_connections()
+        except Exception as e:
+            logging.error(f"Error duplicating connection: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to duplicate connection: {str(e)}")
 
+    def select_terminal_emulator(self):
+        try:
+            # Dialog to choose the preferred terminal emulator
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Select Terminal Emulator")
+            layout = QVBoxLayout(dialog)
+            
+            label = QLabel("Choose Terminal Emulator:")
+            layout.addWidget(label)
+
+            emulator_options = QComboBox()
+
+            # Iterate over the keys of the available_terminal_emulators dictionary
+            for name in self.controller.available_terminal_emulators.keys():
+                emulator_options.addItem(name)
+
+            layout.addWidget(emulator_options)
+
+            # Set the current selection to the previously chosen terminal emulator
+            for index, (name, (command, _)) in enumerate(self.controller.available_terminal_emulators.items()):
+                if command == self.controller.terminal_executable:
+                    emulator_options.setCurrentIndex(index)
+
+            button_box = QHBoxLayout()
+            ok_button = QPushButton("OK")
+            ok_button.clicked.connect(lambda: self.set_terminal_emulator(dialog, emulator_options.currentIndex()))
+            cancel_button = QPushButton("Cancel")
+            cancel_button.clicked.connect(dialog.reject)
+            button_box.addWidget(ok_button)
+            button_box.addWidget(cancel_button)
+            layout.addLayout(button_box)
+
+            if dialog.exec_():
+                selected_terminal = emulator_options.currentText()
+                self.controller.set_terminal_emulator(selected_terminal)
+        except Exception as e:
+            logging.error(f"Error selecting terminal emulator: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to select terminal emulator: {str(e)}")
+
+    def set_terminal_emulator(self, dialog, selected_index):
+        try:
+            """Set the terminal emulator based on the selected index."""
+            # Get the terminal name from the QComboBox by index
+            terminal_name = dialog.findChild(QComboBox).itemText(selected_index)
+
+            # Set the selected terminal name (not the command)
+            self.controller.set_terminal_emulator(terminal_name)
+
+            dialog.accept()
+        except Exception as e:
+            logging.error(f"Error setting terminal emulator: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to set terminal emulator: {str(e)}")
+
+    def update_button_states(self):
+        try:
+            # Check if any connection is selected
+            has_selection = len(self.connection_list_view.selectionModel().selectedIndexes()) > 0
+
+            # Enable/disable buttons based on whether a connection is selected
+            self.remove_btn.setEnabled(has_selection)
+            self.connect_btn.setEnabled(has_selection)
+            self.edit_btn.setEnabled(has_selection)
+            self.duplicate_btn.setEnabled(has_selection)
+        except Exception as e:
+            logging.error(f"Error updating button states: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to update button states: {str(e)}")
+
+    def toggle_minimize_on_close(self, checked):
+        try:
+            self.controller.toggle_minimize_on_close(checked)
+        except Exception as e:
+            logging.error(f"Error toggling minimize on close: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to toggle minimize on close: {str(e)}")
+
+    def closeEvent(self, event):
+        try:
+            if self.controller.get_minimize_on_close():
+                event.ignore()
+                self.hide()
+                self.tray_manager.show_message(
+                    "nuTTY SSH Manager",
+                    "Application minimized to tray.",
+                    QSystemTrayIcon.Information,
+                    2000
+                )
+            else:
+                self.exit_app()
+        except Exception as e:
+            logging.error(f"Error handling close event: {str(e)}")
+            QMessageBox.critical(self, "Error", f"An error occurred while closing the application: {str(e)}")
+
+    def exit_app(self):
+        try:
+            """Exit the application completely."""
+            self.tray_manager.hide_tray_icon()
+            QApplication.quit()  # Quit the application
+        except Exception as e:
+            logging.error(f"Error exiting application: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to exit application: {str(e)}")
 
     def connect_to_server_from_tray(self, row):
-        """Connect to a server from the tray menu based on the row index."""
-        if row >= 0:
-            # Retrieve the connection details
-            connection = self.connection_list_model.get_connection(row)
-            username = connection['username']
-            domain = connection['domain']
+        try:
+            """Connect to a server from the tray menu based on the row index."""
+            if row >= 0:
+                # Retrieve the connection details
+                connection = self.controller.connection_list_model.get_connection(row)
+                self.controller.connect_to_server(connection)
+        except Exception as e:
+            logging.error(f"Error connecting to server from tray: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to connect to server from tray: {str(e)}")
 
-            # Format the SSH command
-            ssh_command = self.ssh_command_template.format(username=username, domain=domain)
+    def show_about(self):
+        try:
+            """Show the About dialog."""
+            about_dialog = AboutDialog(self)
+            about_dialog.exec_()
+        except Exception as e:
+            logging.error(f"Error showing About dialog: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to show About dialog: {str(e)}")
 
-            # Get the proper terminal command string format for the selected terminal emulator
-            terminal_format = self.available_terminal_emulators[self.terminal_executable][1]
+    def show_preferences(self):
+        try:
+            preferences_dialog = PreferencesDialog(self)
+            preferences_dialog.exec_()
+        except Exception as e:
+            logging.error(f"Error showing Preferences dialog: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to show Preferences dialog: {str(e)}")
 
-            # Format the terminal command with the SSH command
-            terminal_command = terminal_format.format(ssh_command=ssh_command)
+    
 
-            try:
-                # Execute the terminal command
-                subprocess.Popen(terminal_command, shell=True)
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to execute command: {e}")

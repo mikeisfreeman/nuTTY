@@ -1,4 +1,5 @@
 from PyQt5.QtCore import QAbstractListModel, Qt, QModelIndex
+from PyQt5.QtCore import Qt
 
 class ConnectionListModel(QAbstractListModel):
     def __init__(self, connections=None):
@@ -26,3 +27,11 @@ class ConnectionListModel(QAbstractListModel):
 
     def get_connection(self, row):
         return self.connections[row]
+
+    def update_connection(self, row, connection):
+        if 0 <= row < len(self.connections):
+            self.connections[row] = connection
+            self.dataChanged.emit(self.index(row), self.index(row))
+
+
+
