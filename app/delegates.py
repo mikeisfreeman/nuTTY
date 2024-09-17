@@ -1,78 +1,97 @@
-from PyQt5.QtWidgets import QStyle
-from PyQt5.QtWidgets import QStyledItemDelegate
-from PyQt5.QtGui import QFont, QPen, QColor
-from PyQt5.QtCore import QRect, Qt, QSize
-
-from PyQt5.QtCore import Qt
-
+import logging
+from PyQt5.QtWidgets import QStyledItemDelegate, QStyle
+from PyQt5.QtGui import QFont, QPen, QColor, QBrush
+from PyQt5.QtCore import Qt, QRect, QSize
 
 class ConnectionItemDelegate(QStyledItemDelegate):
+    def __init__(self, theme_data):
+        super().__init__()
+        self.theme_data = theme_data
+        self.logger = logging.getLogger(__name__)
+
     def paint(self, painter, option, index):
-        # Get the connection details from the model (now it returns a dictionary)
         connection = index.data(Qt.DisplayRole)
         if not connection:
             return
         
         painter.save()
 
-        # Extract the connection fields
-        name = connection.get('name', 'Unknown Name')
-        username = connection.get('username', 'Unknown User')
-        domain = connection.get('domain', 'Unknown Domain')
-        description = connection.get('description', 'No description')
-
-        # Check if the item is selected
+        # Parse colors with alpha
+        bg_color = self.parse_color(self.theme_data.get('list_view_item_background-color', 'rgba(255, 255, 255, 255)'))
+        selected_bg_color = self.parse_color(self.theme_data.get('list_view_item_selected_background-color', 'rgba(230, 243, 255, 255)'))
+        border_color = self.parse_color(self.theme_data.get('list_view_border', '#d0d0d0').split()[2])
+        
+        name_color = self.parse_color(self.theme_data.get('list_view_item_name_color', '#000000'))
+        info_color = self.parse_color(self.theme_data.get('list_view_item_info_color', name_color.lighter(130).name()))
+        desc_color = self.parse_color(self.theme_data.get('list_view_item_desc_color', name_color.lighter(150).name()))
+        
+        selected_name_color = self.parse_color(self.theme_data.get('list_view_item_selected_name_color', '#000000'))
+        selected_info_color = self.parse_color(self.theme_data.get('list_view_item_selected_info_color', '#000000'))
+        selected_desc_color = self.parse_color(self.theme_data.get('list_view_item_selected_description_color', '#000000'))
+        
+        
+        # Draw background
         if option.state & QStyle.State_Selected:
-            painter.fillRect(option.rect, option.palette.highlight())
+            painter.fillRect(option.rect, QBrush(selected_bg_color))
         else:
-            painter.fillRect(option.rect, QColor("#f9f9f9"))  # Light gray background for unselected
+            painter.fillRect(option.rect, QBrush(bg_color))
 
-        # Define padding and spacing
-        padding = 5
-        name_font_size = 12
-        domain_font_size = 11
-        description_font_size = 10
+        # Draw border
+        painter.setPen(QPen(border_color))
+        painter.drawRect(option.rect)
 
-        # Define rectangles for name, username, domain (IP), and description
-        name_rect = QRect(option.rect.left() + padding, option.rect.top() + padding, option.rect.width() - padding * 2, option.rect.height() // 4 - padding)
-        domain_rect = QRect(option.rect.left() + padding, option.rect.top() + option.rect.height() // 4, option.rect.width() - padding * 2, option.rect.height() // 4 - padding)
-        description_rect = QRect(option.rect.left() + padding, option.rect.top() + 2 * (option.rect.height() // 4), option.rect.width() - padding * 2, option.rect.height() // 4 - padding)
+        name = connection.get('name', 'Unknown Name')
+        host = connection.get('domain', 'Unknown Host')
+        username = connection.get('username', 'Unknown Username')
+        connection_info = f"{username}@{host}"
+        description = connection.get('description', "")
 
-        # Customize fonts
-        name_font = QFont()
-        name_font.setPointSize(name_font_size)
-        name_font.setBold(True)
+        # Set fonts colors
+        if option.state & QStyle.State_Selected:
+            name_draw_color = selected_name_color
+            info_draw_color = selected_info_color
+            desc_draw_color = selected_desc_color
+        else:
+            name_draw_color = name_color
+            info_draw_color = info_color
+            desc_draw_color = desc_color
+            
+        font_family = self.theme_data.get('list_view_font-family', 'Arial, sans-serif').replace("'", "")
+        name_font = QFont(font_family, 12, QFont.Bold)
+        info_font = QFont(font_family, 10)
+        description_font = QFont(font_family, 8)
 
-        domain_font = QFont()
-        domain_font.setPointSize(domain_font_size)
+        # Calculate text rectangles
+        name_rect = QRect(option.rect.left() + 10, option.rect.top() + 10, option.rect.width() - 20, 20)
+        info_rect = QRect(option.rect.left() + 10, name_rect.bottom() + 5, option.rect.width() - 20, 20)
+        description_rect = QRect(option.rect.left() + 10, info_rect.bottom() + 5, option.rect.width() - 20, 20)
 
-        description_font = QFont()
-        description_font.setPointSize(description_font_size)
-        description_font.setItalic(True)
-
-        # Set up pen for text color
-        name_pen = QPen(QColor("#333333"))  # Dark text color for name
-        domain_pen = QPen(QColor("#555555"))  # Medium gray for domain (IP)
-        description_pen = QPen(QColor("#777777"))  # Lighter gray for description
-
-        # Draw the connection name (in bold)
+        # Draw name
         painter.setFont(name_font)
-        painter.setPen(name_pen)
-        painter.drawText(name_rect, Qt.AlignLeft | Qt.AlignVCenter, f"{name} ({username})")
+        painter.setPen(QPen(name_draw_color))
+        painter.drawText(name_rect, Qt.AlignLeft | Qt.AlignVCenter, name)
 
-        # Draw the domain (IP address)
-        painter.setFont(domain_font)
-        painter.setPen(domain_pen)
-        painter.drawText(domain_rect, Qt.AlignLeft | Qt.AlignVCenter, f"Domain/IP: {domain}")
+        # Draw connection info
+        painter.setFont(info_font)
+        painter.setPen(QPen(info_draw_color))
+        painter.drawText(info_rect, Qt.AlignLeft | Qt.AlignVCenter, connection_info)
 
-        # Draw the connection description (in italic)
+        # Draw description
         painter.setFont(description_font)
-        painter.setPen(description_pen)
+        painter.setPen(QPen(desc_draw_color))
         painter.drawText(description_rect, Qt.AlignLeft | Qt.AlignVCenter, description)
 
         painter.restore()
 
     def sizeHint(self, option, index):
-        return QSize(200, 80)  # Adjusted height to fit name, domain, and description
+        return QSize(200, 100)
 
-    
+    def parse_color(self, color_string):
+        if color_string.startswith('rgba'):
+            r, g, b, a = map(int, color_string.strip('rgba()').split(','))
+            return QColor(r, g, b, a)
+        elif color_string.startswith('#'):
+            return QColor(color_string)
+        else:
+            return QColor(color_string)
+

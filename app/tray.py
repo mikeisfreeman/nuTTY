@@ -17,11 +17,15 @@ class TrayManager(QObject):
         tray_icon = QSystemTrayIcon(QIcon("assets/icons/nuTTY_64x64_dark.png"), self.parent)
         tray_icon.setToolTip("nuTTY SSH Manager")
 
-        # Tray menu
+        # Create the tray menu
         tray_menu = QMenu()
-
+        
         # Add dynamic list of connections
-        self.update_tray_connections(tray_menu)
+        self.connections_menu = QMenu("Connections", self.parent)
+        tray_menu.addMenu(self.connections_menu)
+        
+        # Add separator
+        tray_menu.addSeparator()
 
         # Restore action
         restore_action = QAction("Restore", self.parent)
@@ -37,42 +41,22 @@ class TrayManager(QObject):
         tray_icon.activated.connect(self.tray_icon_activated)
         tray_icon.show()
 
+        # Initial update of connections
+        self.update_tray_connections()
+
         return tray_icon
 
-    def update_tray_connections(self, tray_menu=None):
-        """Dynamically populate the tray menu with a list of connections."""
-        if tray_menu is None:
-            tray_menu = self.tray_icon.contextMenu()
+    def update_tray_connections(self):
+        """Dynamically populate the connections submenu with a list of connections."""
+        self.connections_menu.clear()
 
-        # Clear any existing connections to avoid duplicates
-        tray_menu.clear()
-
-        # Add a section for the connections
-        connections_menu = QMenu("Connections", self.parent)
-
-        # Loop through the model and add each connection as an action in the tray menu
+        # Loop through the model and add each connection as an action in the connections submenu
         for row in range(self.connection_model.rowCount()):
             connection = self.connection_model.get_connection(row)
 
             connection_action = QAction(f"{connection['name']} - {connection['domain']}", self.parent)
             connection_action.triggered.connect(lambda checked, row=row: self.connect_to_server_signal.emit(row))
-            connections_menu.addAction(connection_action)
-
-        # Add the connections menu to the tray menu
-        tray_menu.addMenu(connections_menu)
-
-        # Add separator
-        tray_menu.addSeparator()
-
-        # Restore action
-        restore_action = QAction("Restore", self.parent)
-        restore_action.triggered.connect(self.show_window_signal.emit)
-        tray_menu.addAction(restore_action)
-        
-        # Exit action
-        exit_action = QAction("Exit", self.parent)
-        exit_action.triggered.connect(self.exit_app_signal.emit)
-        tray_menu.addAction(exit_action)
+            self.connections_menu.addAction(connection_action)
 
     def tray_icon_activated(self, reason):
         """Handle tray icon click."""

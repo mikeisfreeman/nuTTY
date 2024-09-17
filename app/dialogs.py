@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QComboBox, QCheckBox, QHBoxLayout, QPushButton, QMessageBox, QFileDialog
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPixmap, QDesktopServices
+from PyQt5.QtCore import Qt, QUrl
 
 class AddConnectionDialog(QDialog):
     def __init__(self, parent=None):
@@ -144,41 +144,54 @@ class EditConnectionDialog(AddConnectionDialog):
             self.identity_file_edit.setEnabled(self.auth_method.isChecked())
             self.identity_file_button.setEnabled(self.auth_method.isChecked())
 
-class AboutDialog(QMessageBox):
+class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("About nuTTY")
         self.setModal(True)
+
+        layout = QVBoxLayout(self)
+
+        # Create a horizontal layout for the image and text
+        content_layout = QHBoxLayout()
+
         # Set the text for the about message
-        self.setText("nuTTY is a simple, user-friendly SSH and Telnet session manager.\n"
-                            "Created to manage your connections with ease.\n\n"
-                            "Version: 0.1.5.2\nAuthor: Mike")
-        
-        # Set an icon next to the text in the QMessageBox
+        text_label = QLabel(
+            "nuTTY is a simple, user-friendly SSH and Telnet session manager.\n"
+            "Created to manage your connections with ease.\n\n"
+            "Version: 0.3.0\n"
+            "Author: Mike\n"
+        )
+        text_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        # Create a single label for both links
+        links_label = QLabel(
+            "View nuTTY on <a href='https://github.com/mikeisfreeman/nuTTY'>GitHub</a><br>"
+            "<a href='https://github.com/mikeisfreeman/nuTTY/#'>Check for Updates</a>"
+        )
+        links_label.setOpenExternalLinks(True)
+        links_label.setTextFormat(Qt.RichText)
+        links_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+
+        # Create a vertical layout for text and links
+        text_layout = QVBoxLayout()
+        text_layout.addWidget(text_label)
+        text_layout.addWidget(links_label)
+        text_layout.setSpacing(0)  # Reduce spacing between widgets
+
+        # Set an icon next to the text
         custom_image = QLabel()
         custom_image.setPixmap(QPixmap("assets/icons/nuTTY_256x256_about.png"))
 
-        # Insert image into the message box
-        self.layout().addWidget(custom_image, 0, self.layout().rowCount(), 1, -1)
-        
+        # Add image and text to the horizontal layout
+        content_layout.addWidget(custom_image)
+        content_layout.addLayout(text_layout)
 
-# Create a custom QMessageBox instance
-# about_dialog = QMessageBox(self)
-# about_dialog.setWindowTitle("About nuTTY")
+        # Add the content layout to the main layout
+        layout.addLayout(content_layout)
 
-# about_dialog.setIconPixmap(QPixmap())  # Clear the default icon
+        # Add a close button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button, alignment=Qt.AlignHCenter)
 
-# # Set the text for the about message
-# about_dialog.setText("nuTTY is a simple, user-friendly SSH and Telnet session manager.\n"
-#                     "Created to manage your connections with ease.\n\n"
-#                     "Version: 0.1.5.2\nAuthor: Mike")
-
-# # Set an icon next to the text in the QMessageBox
-# custom_image = QLabel()
-# custom_image.setPixmap(QPixmap("assets/icons/nuTTY_256x256_about.png"))
-
-# # Insert image into the message box
-# about_dialog.layout().addWidget(custom_image, 0, about_dialog.layout().rowCount(), 1, -1)
-
-# # Show the about dialog
-# about_dialog.exec_()
