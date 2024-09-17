@@ -48,7 +48,13 @@ class Controller:
         self.add_connection(connection)
 
     def connect_to_server(self, connection):
-        command = self.build_ssh_command(connection)
+        if connection['protocol'] == 'SSH':
+            command = self.build_ssh_command(connection)
+        elif connection['protocol'] == 'Telnet':
+            command = self.build_telnet_command(connection)
+        else:
+            raise ValueError(f"Unsupported protocol: {connection['protocol']}")
+        
         try:
             subprocess.Popen(command, shell=False)
         except Exception as e:
@@ -78,6 +84,29 @@ class Controller:
             ssh_command.extend(ssh_args)
 
         return ssh_command
+
+    def build_telnet_command(self, connection):
+        terminal_name = self.config.get('terminal_emulator')
+        terminal_info = self.available_terminal_emulators.get(terminal_name)
+        if not terminal_info:
+            raise ValueError(f"Terminal emulator '{terminal_name}' not found")
+
+        command, args, use_single_arg = terminal_info
+        telnet_command = [command]
+        telnet_command.extend(args)
+
+        telnet_args = ["telnet", connection['domain']]
+        
+        # Add port if specified (default Telnet port is 23)
+        if 'port' in connection and connection['port']:
+            telnet_args.append(str(connection['port']))
+
+        if use_single_arg:
+            telnet_command.append(" ".join(telnet_args))
+        else:
+            telnet_command.extend(telnet_args)
+
+        return telnet_command
 
     def get_terminal_executable(self):
         terminal_name = self.config.get('terminal_emulator')
